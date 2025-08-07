@@ -17,9 +17,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/redwilly/fontscanner.git"
+    "url": "git+https://github.com/RedWilly/fontscanner.git"
   },
-  "homepage": "https://github.com/redwilly/fontscanner#readme",
+  "homepage": "https://github.com/RedWilly/fontscanner#readme",
   "keywords": [
     "font",
     "fonts",
