@@ -1,7 +1,37 @@
 {
-  "name": "font-scanner",
+  "name": "@redwilly/manim-ts",
+  "version": "1.0.0",
+  "description": "Cross-platform Node.js library for discovering and searching system fonts",
+  "main": "dist/index.js",
   "module": "src/index.ts",
+  "types": "dist/index.d.ts",
   "type": "module",
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "tsc",
+    "test": "bun run src/index.ts",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "font",
+    "fonts",
+    "typography",
+    "cross-platform",
+    "nodejs",
+    "typescript",
+    "font-discovery",
+    "system-fonts"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
   "devDependencies": {
     "@types/bun": "latest"
   },
