@@ -1,5 +1,5 @@
 {
-  "name": "@redwilly/manim-ts",
+  "name": "@redwilly/fontscanner",
   "version": "1.0.0",
   "description": "Cross-platform Node.js library for discovering and searching system fonts",
   "main": "dist/index.js",

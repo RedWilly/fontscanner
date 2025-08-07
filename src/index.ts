@@ -3,14 +3,20 @@
  * @packageDocumentation
  */
 
-// Export all public API functions and types
+// Export the new chainable FontScanner API and types
 export {
-  getAllFonts,
-  findFontByName,
-  getFontsByFormat,
+  FontScanner,
   clearFontCache,
   getCachedFontCount,
-  isCacheValid,
-  type FontEntry,
-  type FontScanOptions
+  isCacheValid
 } from './fontScanner';
+
+export type {
+  FontEntry,
+  FontScanOptions,
+  FontError,
+  FontScanResult
+} from './fontScanner';
+
+// Re-export FontScanner as default for convenience
+export { FontScanner as default } from './fontScanner';

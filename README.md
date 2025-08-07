@@ -9,40 +9,63 @@
 ## Features
 
 - 🌍 **Cross-platform**: Works on Windows, macOS, and Linux
-- ⚡ **Fast**: Built-in caching for improved performance
+- ⚡ **Fast**: Built-in caching for improved performance with async support
 - 🔍 **Smart search**: Find fonts by name with exact and partial matching
 - 📁 **Flexible**: Support for system fonts, user fonts, and custom directories
 - 🎯 **Type-safe**: Full TypeScript support with comprehensive type definitions
-- 📊 **Format support**: TTF, OTF, WOFF, WOFF2, EOT, TTC font formats
+- 📊 **Format support**: TTF, OTF, WOFF, WOFF2, EOT, TTC, PostScript, Bitmap fonts
 - 🛠️ **Configurable**: Extensive options for customizing font discovery
+- 🔄 **Async/Sync**: Both synchronous and asynchronous APIs available
+- 📈 **Rich metadata**: Extract font family, weight, style, version, and more
+- 🚨 **Error reporting**: Comprehensive error tracking and statistics
+- 👨‍💻 **Developer-friendly**: Detailed scan results and performance metrics
 
 ## Installation
 
 ```bash
 # Using bun (recommended)
-bun add @redwilly/font-scanner
+bun add @redwilly/fontscanner
 
 # Using npm
-npm install @redwilly/font-scanner
+npm install @redwilly/fontscanner
 
 # Using yarn
-yarn add @redwilly/font-scanner
+yarn add @redwilly/fontscanner
 ```
 
 ## Quick Start
 
 ```typescript
-import { getAllFonts, findFontByName } from '@redwilly/font-scanner';
+import FontScanner from '@redwilly/fontscanner';
 
-// Get all fonts on the system
-const fonts = getAllFonts();
+// Simple usage - get all fonts
+const fonts = FontScanner.scan().getFonts();
 console.log(`Found ${fonts.length} fonts`);
 
-// Search for a specific font
-const arial = findFontByName('Arial');
-if (arial) {
-  console.log(`Arial found at: ${arial.path}`);
-}
+// Chainable API - filter and search
+const boldTtfFonts = FontScanner
+  .scan({ useCache: false })
+  .filterByFormat('ttf')
+  .filterByWeight(700)
+  .getFonts();
+
+// Search for specific fonts
+const arialFonts = FontScanner
+  .scan()
+  .searchByName('Arial')
+  .getFonts();
+
+// Get only monospace fonts
+const monoFonts = FontScanner
+  .scan()
+  .onlyMonospace()
+  .getFonts();
+
+// Async usage (same API)
+const asyncFonts = await FontScanner
+  .scan()
+  .filterByFormat('otf')
+  .getFontsAsync();
 ```
 
 ## API Reference
@@ -61,6 +84,22 @@ interface FontEntry {
   path: string;
   /** The font file format (ttf, otf, etc.) */
   format?: string;
+  /** Font family name (e.g., 'Arial', 'Times New Roman') */
+  family?: string;
+  /** Font weight (100-900, where 400 is normal, 700 is bold) */
+  weight?: number;
+  /** Font style */
+  style?: 'normal' | 'italic' | 'oblique';
+  /** Font version string */
+  version?: string;
+  /** Copyright information */
+  copyright?: string;
+  /** Whether the font is monospaced */
+  isMonospace?: boolean;
+  /** Font file size in bytes */
+  fileSize?: number;
+  /** Last modified timestamp */
+  lastModified?: Date;
 }
 ```
 
@@ -79,77 +118,141 @@ interface FontScanOptions {
   /** Custom directories to scan */
   customDirs?: string[];
 }
+
+interface FontError {
+  /** Path to the font file that caused the error */
+  path: string;
+  /** Error message */
+  message: string;
+  /** Error code for programmatic handling */
+  code: 'FILE_NOT_FOUND' | 'PERMISSION_DENIED' | 'INVALID_FONT' | 'PARSE_ERROR' | 'UNKNOWN';
+}
+
+interface FontScanResult {
+  /** Successfully parsed fonts */
+  fonts: FontEntry[];
+  /** Errors encountered during scanning */
+  errors: FontError[];
+  /** Scan statistics */
+  stats: {
+    /** Total directories scanned */
+    directoriesScanned: number;
+    /** Total files processed */
+    filesProcessed: number;
+    /** Successfully parsed fonts */
+    fontsFound: number;
+    /** Files that failed to parse */
+    filesFailed: number;
+    /** Total scan time in milliseconds */
+    scanTimeMs: number;
+  };
+}
 ```
 
-### Functions
+### FontScanner Class
 
-#### `getAllFonts(options?: FontScanOptions): FontEntry[]`
+The main `FontScanner` class provides a fluent, chainable API for font discovery and filtering.
 
-Retrieve all fonts available on the system.
+#### `FontScanner.scan(options?: FontScanOptions): FontScanner`
 
-```typescript
-import { getAllFonts } from '@redwilly/font-scanner';
-
-// Get all fonts (uses cache by default)
-const allFonts = getAllFonts();
-
-// Get only system fonts, skip cache
-const systemFonts = getAllFonts({
-  includeUserFonts: false,
-  useCache: false
-});
-
-// Scan custom directories
-const customFonts = getAllFonts({
-  customDirs: ['/path/to/custom/fonts']
-});
-```
-
-#### `findFontByName(query: string, options?: FontScanOptions): FontEntry | null`
-
-Find a font by name (case-insensitive). Supports both exact and partial matching.
+Static method to create a new FontScanner instance.
 
 ```typescript
-import { findFontByName } from '@redwilly/font-scanner';
+import FontScanner from '@redwilly/fontscanner';
 
-// Exact match
-const arial = findFontByName('Arial');
-
-// Partial match (if exact match fails)
-const helvetica = findFontByName('Helv'); // Might find "Helvetica"
+// Basic usage
+const scanner = FontScanner.scan();
 
 // With options
-const font = findFontByName('Times', {
-  includeUserFonts: false
+const scanner = FontScanner.scan({
+  useCache: false,
+  includeUserFonts: true,
+  customDirs: ['/path/to/fonts']
 });
 ```
 
-#### `getFontsByFormat(format: string, options?: FontScanOptions): FontEntry[]`
+#### Chainable Filter Methods
 
-Get all fonts of a specific format.
+All filter methods return the FontScanner instance for chaining:
 
 ```typescript
-import { getFontsByFormat } from '@redwilly/font-scanner';
+// Filter by font format
+scanner.filterByFormat('ttf')
 
-// Get all TTF fonts
-const ttfFonts = getFontsByFormat('ttf');
+// Filter by font weight (100-900)
+scanner.filterByWeight(700)
 
-// Get all OTF fonts from system only
-const otfFonts = getFontsByFormat('otf', {
-  includeUserFonts: false
-});
+// Filter to only monospace fonts
+scanner.onlyMonospace()
+
+// Search by name (partial match)
+scanner.searchByName('Arial')
+
+// Match font name exactly
+scanner.matchNameExactly('Courier New')
+```
+
+#### Result Methods
+
+Get the final results after applying filters:
+
+```typescript
+// Get fonts synchronously
+const fonts: FontEntry[] = scanner.getFonts();
+
+// Get fonts asynchronously
+const fonts: FontEntry[] = await scanner.getFontsAsync();
+
+// Get detailed results with error reporting (sync)
+const result: FontScanResult = scanner.getResult();
+
+// Get detailed results with error reporting (async)
+const result: FontScanResult = await scanner.getResultAsync();
+```
+
+#### Complete Examples
+
+```typescript
+import FontScanner from '@redwilly/fontscanner';
+
+// Example 1: Find all bold TTF fonts
+const boldTtfFonts = FontScanner
+  .scan({ useCache: false })
+  .filterByFormat('ttf')
+  .filterByWeight(700)
+  .getFonts();
+
+// Example 2: Search for Arial variants
+const arialFonts = FontScanner
+  .scan()
+  .searchByName('Arial')
+  .getFonts();
+
+// Example 3: Get monospace fonts with error details
+const result = FontScanner
+  .scan()
+  .onlyMonospace()
+  .getResult();
+
+console.log(`Found ${result.fonts.length} monospace fonts`);
+console.log(`${result.errors.length} errors occurred`);
+
+// Example 4: Async usage with multiple filters
+const specificFonts = await FontScanner
+  .scan({ includeUserFonts: false })
+  .filterByFormat('otf')
+  .filterByWeight(400)
+  .searchByName('Times')
+  .getFontsAsync();
 ```
 
 #### `clearFontCache(): void`
 
-Clear the font cache to force a fresh scan on the next call.
+```
+import { clearFontCache } from '@redwilly/fontscanner';
 
-```typescript
-import { clearFontCache, getAllFonts } from '@redwilly/font-scanner';
-
-// Clear cache and get fresh results
+// Clear cache
 clearFontCache();
-const freshFonts = getAllFonts();
 ```
 
 #### `getCachedFontCount(): number`
@@ -157,7 +260,7 @@ const freshFonts = getAllFonts();
 Get the number of fonts currently in cache.
 
 ```typescript
-import { getCachedFontCount } from '@redwilly/font-scanner';
+import { getCachedFontCount } from '@redwilly/fontscanner';
 
 const count = getCachedFontCount();
 console.log(`${count} fonts in cache`);
@@ -168,7 +271,7 @@ console.log(`${count} fonts in cache`);
 Check if the current cache is valid (exists and not expired).
 
 ```typescript
-import { isCacheValid } from '@redwilly/font-scanner';
+import { isCacheValid } from '@redwilly/fontscanner';
 
 if (isCacheValid()) {
   console.log('Cache is valid');
@@ -199,10 +302,10 @@ if (isCacheValid()) {
 ### Basic Usage
 
 ```typescript
-import { getAllFonts, findFontByName } from '@redwilly/font-scanner';
+import FontScanner from '@redwilly/fontscanner';
 
 // List all fonts
-const fonts = getAllFonts();
+const fonts = FontScanner.scan().getFonts();
 fonts.forEach(font => {
   console.log(`${font.name} (${font.format}) - ${font.path}`);
 });
@@ -210,9 +313,13 @@ fonts.forEach(font => {
 // Find specific fonts
 const commonFonts = ['Arial', 'Times New Roman', 'Helvetica', 'Calibri'];
 for (const fontName of commonFonts) {
-  const font = findFontByName(fontName);
-  if (font) {
-    console.log(`✓ ${fontName}: ${font.path}`);
+  const matchingFonts = FontScanner
+    .scan()
+    .matchNameExactly(fontName)
+    .getFonts();
+  
+  if (matchingFonts.length > 0 && matchingFonts[0]) {
+    console.log(`✓ ${fontName}: ${matchingFonts[0].path}`);
   } else {
     console.log(`✗ ${fontName}: Not found`);
   }
@@ -222,7 +329,7 @@ for (const fontName of commonFonts) {
 ### Performance Optimization
 
 ```typescript
-import { getAllFonts, isCacheValid, clearFontCache } from '@redwilly/font-scanner';
+import FontScanner, { isCacheValid, clearFontCache } from '@redwilly/fontscanner';
 
 // Check cache before scanning
 if (!isCacheValid()) {
@@ -230,25 +337,28 @@ if (!isCacheValid()) {
 }
 
 const startTime = Date.now();
-const fonts = getAllFonts();
+const fonts = FontScanner.scan().getFonts();
 const scanTime = Date.now() - startTime;
 
 console.log(`Found ${fonts.length} fonts in ${scanTime}ms`);
 
-// Force refresh if needed
+// Example: Force refresh when needed
+const needsFreshData = fonts.length === 0; // Example condition
 if (needsFreshData) {
+  console.log('Refreshing font cache...');
   clearFontCache();
-  const freshFonts = getAllFonts();
+  const freshFonts = FontScanner.scan({ useCache: false }).getFonts();
+  console.log(`Found ${freshFonts.length} fonts after refresh`);
 }
 ```
 
 ### Custom Font Directories
 
 ```typescript
-import { getAllFonts } from '@redwilly/font-scanner';
+import FontScanner from '@redwilly/fontscanner';
 
 // Scan additional directories
-const fonts = getAllFonts({
+const fonts = FontScanner.scan({
   customDirs: [
     '/opt/fonts',
     '/home/user/custom-fonts',
@@ -256,28 +366,32 @@ const fonts = getAllFonts({
   ],
   includeSystemFonts: true,
   includeUserFonts: true
-});
+}).getFonts();
 ```
 
 ### Filter by Format
 
 ```typescript
-import { getFontsByFormat, getAllFonts } from '@redwilly/font-scanner';
+import FontScanner from '@redwilly/fontscanner';
 
-// Get fonts by specific formats
-const ttfFonts = getFontsByFormat('ttf');
-const otfFonts = getFontsByFormat('otf');
-const webFonts = getFontsByFormat('woff');
+// Get and display fonts by specific formats
+const ttfFonts = FontScanner.scan().filterByFormat('ttf').getFonts();
+const otfFonts = FontScanner.scan().filterByFormat('otf').getFonts();
+const webFonts = FontScanner.scan().filterByFormat('woff').getFonts();
 
-// Count fonts by format
-const allFonts = getAllFonts();
+console.log(`TTF fonts: ${ttfFonts.length}`);
+console.log(`OTF fonts: ${otfFonts.length}`);
+console.log(`WOFF fonts: ${webFonts.length}`);
+
+// Count all fonts by format
+const allFonts = FontScanner.scan().getFonts();
 const formatCounts = allFonts.reduce((acc, font) => {
   const format = font.format || 'unknown';
   acc[format] = (acc[format] || 0) + 1;
   return acc;
 }, {} as Record<string, number>);
 
-console.log('Fonts by format:', formatCounts);
+console.log('All fonts by format:', formatCounts);
 ```
 
 ## Performance Notes

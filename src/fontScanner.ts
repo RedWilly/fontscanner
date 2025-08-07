@@ -3,8 +3,12 @@ import * as path from 'path';
 import * as os from 'os';
 import { execSync } from 'child_process';
 
-// Supported font extensions
-const FONT_EXTENSIONS = ['.ttf', '.otf', '.woff', '.woff2', '.eot', '.ttc'];
+/**
+ * Supported font file extensions (modern formats only)
+ */
+const FONT_EXTENSIONS = new Set([
+  '.ttf', '.otf', '.woff', '.woff2', '.ttc', '.fon', '.fnt'
+]);
 
 // Font cache for performance
 let fontCache: FontEntry[] | null = null;
@@ -21,6 +25,57 @@ export interface FontEntry {
   path: string;
   /** The font file format (ttf, otf, etc.) */
   format?: string;
+  /** Font family name (e.g., 'Arial', 'Times New Roman') */
+  family?: string;
+  /** Font weight (100-900, where 400 is normal, 700 is bold) */
+  weight?: number;
+  /** Font style */
+  style?: 'normal' | 'italic' | 'oblique';
+  /** Font version string */
+  version?: string;
+  /** Copyright information */
+  copyright?: string;
+  /** Whether the font is monospaced */
+  isMonospace?: boolean;
+  /** Font file size in bytes */
+  fileSize?: number;
+  /** Last modified timestamp */
+  lastModified?: Date;
+}
+
+/**
+ * Error information for failed font operations
+ */
+export interface FontError {
+  /** Path to the font file that caused the error */
+  path: string;
+  /** Error message */
+  message: string;
+  /** Error code for programmatic handling */
+  code: 'FILE_NOT_FOUND' | 'PERMISSION_DENIED' | 'INVALID_FONT' | 'PARSE_ERROR' | 'UNKNOWN';
+}
+
+/**
+ * Result object for font scanning operations with error reporting
+ */
+export interface FontScanResult {
+  /** Successfully parsed fonts */
+  fonts: FontEntry[];
+  /** Errors encountered during scanning */
+  errors: FontError[];
+  /** Scan statistics */
+  stats: {
+    /** Total directories scanned */
+    directoriesScanned: number;
+    /** Total files processed */
+    filesProcessed: number;
+    /** Successfully parsed fonts */
+    fontsFound: number;
+    /** Files that failed to parse */
+    filesFailed: number;
+    /** Total scan time in milliseconds */
+    scanTimeMs: number;
+  };
 }
 
 /**
@@ -35,6 +90,167 @@ export interface FontScanOptions {
   includeUserFonts?: boolean;
   /** Custom directories to scan */
   customDirs?: string[];
+}
+
+/**
+ * Chainable FontScanner class for fluent API
+ */
+export class FontScanner {
+  private _options: FontScanOptions = {};
+  private _filters: {
+    format?: string;
+    weight?: number;
+    monospaceOnly?: boolean;
+    nameSearch?: { query: string; exact: boolean };
+  } = {};
+
+  /**
+   * Create a new FontScanner instance
+   * @param options - Initial scan options
+   */
+  constructor(options: FontScanOptions = {}) {
+    this._options = { ...options };
+  }
+
+  /**
+   * Static method to start scanning
+   * @param options - Font scan options
+   * @returns FontScanner instance for chaining
+   */
+  static scan(options: FontScanOptions = {}): FontScanner {
+    return new FontScanner(options);
+  }
+
+  /**
+   * Filter fonts by format
+   * @param format - Font format (ttf, otf, etc.)
+   * @returns FontScanner instance for chaining
+   */
+  filterByFormat(format: string): FontScanner {
+    this._filters.format = format.toLowerCase();
+    return this;
+  }
+
+  /**
+   * Filter fonts by weight
+   * @param weight - Font weight (100-900)
+   * @returns FontScanner instance for chaining
+   */
+  filterByWeight(weight: number): FontScanner {
+    this._filters.weight = weight;
+    return this;
+  }
+
+  /**
+   * Filter to only monospace fonts
+   * @returns FontScanner instance for chaining
+   */
+  onlyMonospace(): FontScanner {
+    this._filters.monospaceOnly = true;
+    return this;
+  }
+
+  /**
+   * Search fonts by name (partial match)
+   * @param query - Search query
+   * @returns FontScanner instance for chaining
+   */
+  searchByName(query: string): FontScanner {
+    this._filters.nameSearch = { query, exact: false };
+    return this;
+  }
+
+  /**
+   * Match font name exactly
+   * @param name - Exact font name
+   * @returns FontScanner instance for chaining
+   */
+  matchNameExactly(name: string): FontScanner {
+    this._filters.nameSearch = { query: name, exact: true };
+    return this;
+  }
+
+  /**
+   * Get fonts synchronously
+   * @returns Array of font entries
+   */
+  getFonts(): FontEntry[] {
+    const allFonts = getAllFontsSync(this._options);
+    return this._applyFilters(allFonts);
+  }
+
+  /**
+   * Get fonts asynchronously
+   * @returns Promise resolving to array of font entries
+   */
+  async getFontsAsync(): Promise<FontEntry[]> {
+    const allFonts = await getAllFontsAsync(this._options);
+    return this._applyFilters(allFonts);
+  }
+
+  /**
+   * Get detailed scan result synchronously
+   * @returns FontScanResult with fonts, errors, and stats
+   */
+  getResult(): FontScanResult {
+    const result = getAllFontsWithResultSync(this._options);
+    result.fonts = this._applyFilters(result.fonts);
+    return result;
+  }
+
+  /**
+   * Get detailed scan result asynchronously
+   * @returns Promise resolving to FontScanResult
+   */
+  async getResultAsync(): Promise<FontScanResult> {
+    const result = await getAllFontsWithResultAsync(this._options);
+    result.fonts = this._applyFilters(result.fonts);
+    return result;
+  }
+
+  /**
+   * Apply all filters to the font list
+   * @param fonts - Array of fonts to filter
+   * @returns Filtered array of fonts
+   */
+  private _applyFilters(fonts: FontEntry[]): FontEntry[] {
+    let filtered = fonts;
+
+    // Apply format filter
+    if (this._filters.format) {
+      filtered = filtered.filter(font => 
+        font.format?.toLowerCase() === this._filters.format
+      );
+    }
+
+    // Apply weight filter
+    if (this._filters.weight !== undefined) {
+      filtered = filtered.filter(font => font.weight === this._filters.weight);
+    }
+
+    // Apply monospace filter
+    if (this._filters.monospaceOnly) {
+      filtered = filtered.filter(font => font.isMonospace === true);
+    }
+
+    // Apply name search filter
+    if (this._filters.nameSearch) {
+      const { query, exact } = this._filters.nameSearch;
+      if (exact) {
+        filtered = filtered.filter(font => 
+          font.name.toLowerCase() === query.toLowerCase() ||
+          font.family?.toLowerCase() === query.toLowerCase()
+        );
+      } else {
+        filtered = filtered.filter(font => 
+          font.name.toLowerCase().includes(query.toLowerCase()) ||
+          font.family?.toLowerCase().includes(query.toLowerCase())
+        );
+      }
+    }
+
+    return filtered;
+  }
 }
 
 /**
@@ -105,29 +321,6 @@ function getPlatformFontDirs(options: FontScanOptions = {}): string[] {
 }
 
 /**
- * Decode UTF-16 Big Endian buffer to string
- * @param buffer - Buffer containing UTF-16 BE encoded text
- * @returns Decoded string
- */
-function decodeUtf16BE(buffer: Buffer): string {
-  let result = '';
-  
-  // UTF-16 BE uses 2 bytes per character
-  for (let i = 0; i < buffer.length - 1; i += 2) {
-    const byte1 = buffer[i];
-    const byte2 = buffer[i + 1];
-    if (byte1 !== undefined && byte2 !== undefined) {
-      const charCode = (byte1 << 8) | byte2;
-      if (charCode !== 0) { // Skip null characters
-        result += String.fromCharCode(charCode);
-      }
-    }
-  }
-  
-  return result;
-}
-
-/**
  * Get font directories from Windows registry
  * @returns Array of unique font directory paths
  */
@@ -154,50 +347,175 @@ function getWindowsRegistryFonts(): string[] {
       }
     }
   } catch {
-    // Registry query failed - not critical
+    // Ignore registry errors - not critical
   }
   
   return [...new Set(dirs)];
 }
 
-function walkDir(dir: string, fileList: string[] = []): string[] {
-  if (!fs.existsSync(dir)) return fileList;
-
-  const files = fs.readdirSync(dir);
-  for (const file of files) {
-    const fullPath = path.join(dir, file);
-    try {
-      const stat = fs.statSync(fullPath);
-      if (stat.isDirectory()) {
-        walkDir(fullPath, fileList);
-      } else if (FONT_EXTENSIONS.includes(path.extname(fullPath).toLowerCase())) {
-        fileList.push(fullPath);
+/**
+ * Walk directory recursively to find font files (synchronous)
+ * @param dir - Directory to walk
+ * @param fileList - Array to collect font files
+ * @param maxDepth - Maximum recursion depth (default: 3)
+ */
+function walkDir(dir: string, fileList: string[], maxDepth: number = 3): void {
+  if (maxDepth <= 0) return;
+  
+  try {
+    const files = fs.readdirSync(dir, { withFileTypes: true });
+    
+    for (const file of files) {
+      try {
+        const fullPath = path.join(dir, file.name);
+        
+        if (file.isDirectory()) {
+          // Skip common non-font directories
+          if (!file.name.startsWith('.') && 
+              !['node_modules', 'cache', 'tmp', 'temp'].includes(file.name.toLowerCase())) {
+            walkDir(fullPath, fileList, maxDepth - 1);
+          }
+        } else if (file.isFile()) {
+          const ext = path.extname(fullPath).toLowerCase();
+          if (FONT_EXTENSIONS.has(ext)) {
+            fileList.push(fullPath);
+          }
+        }
+      } catch {
+        // Skip files/directories that can't be accessed
+        continue;
       }
-    } catch {
-      continue;
     }
+  } catch {
+    // Skip directories that can't be read
   }
-
-  return fileList;
 }
 
 /**
- * Extract font name from TTF/OTF font file
- * @param fontPath - Path to the font file
- * @returns Font name or null if extraction fails
+ * Walk directory recursively to find font files (asynchronous)
+ * @param dir - Directory to walk
+ * @param fileList - Array to collect font files
+ * @param maxDepth - Maximum recursion depth (default: 3)
  */
-function readFontNameSync(fontPath: string): string | null {
+async function walkDirAsync(dir: string, fileList: string[], maxDepth: number = 3): Promise<void> {
+  if (maxDepth <= 0) return;
+  
   try {
-    const buffer = fs.readFileSync(fontPath);
+    const files = await fs.promises.readdir(dir, { withFileTypes: true });
     
+    for (const file of files) {
+      try {
+        const fullPath = path.join(dir, file.name);
+        
+        if (file.isDirectory()) {
+          // Skip common non-font directories
+          if (!file.name.startsWith('.') && 
+              !['node_modules', 'cache', 'tmp', 'temp'].includes(file.name.toLowerCase())) {
+            await walkDirAsync(fullPath, fileList, maxDepth - 1);
+          }
+        } else if (file.isFile()) {
+          const ext = path.extname(fullPath).toLowerCase();
+          if (FONT_EXTENSIONS.has(ext)) {
+            fileList.push(fullPath);
+          }
+        }
+      } catch {
+        // Skip files/directories that can't be accessed
+        continue;
+      }
+    }
+  } catch {
+    // Skip directories that can't be read
+  }
+}
+
+/**
+ * Read font metadata synchronously with improved parsing
+ * @param fontPath - Path to the font file
+ * @returns Font metadata or null if extraction fails
+ */
+function readFontMetadataSync(fontPath: string): Partial<FontEntry> | null {
+  try {
+    const stats = fs.statSync(fontPath);
+    const buffer = fs.readFileSync(fontPath);
+    const ext = path.extname(fontPath).toLowerCase();
+    
+    // Base metadata from file system
+    const baseMetadata: Partial<FontEntry> = {
+      path: fontPath,
+      format: ext.substring(1),
+      fileSize: stats.size,
+      lastModified: stats.mtime
+    };
+    
+    // Handle different font formats - only parse TTF/OTF properly
+    if (['.ttf', '.otf', '.ttc'].includes(ext)) {
+      const ttfMetadata = parseTTFOTFFont(buffer);
+      if (ttfMetadata && ttfMetadata.name) {
+        return { ...baseMetadata, ...ttfMetadata };
+      }
+    }
+    
+    // For other formats or failed parsing, use filename as fallback
+    const name = path.basename(fontPath, ext);
+    return { ...baseMetadata, name, family: name };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read font metadata asynchronously with improved parsing
+ * @param fontPath - Path to the font file
+ * @returns Promise resolving to font metadata or null if extraction fails
+ */
+async function readFontMetadataAsync(fontPath: string): Promise<Partial<FontEntry> | null> {
+  try {
+    const stats = await fs.promises.stat(fontPath);
+    const buffer = await fs.promises.readFile(fontPath);
+    const ext = path.extname(fontPath).toLowerCase();
+    
+    // Base metadata from file system
+    const baseMetadata: Partial<FontEntry> = {
+      path: fontPath,
+      format: ext.substring(1),
+      fileSize: stats.size,
+      lastModified: stats.mtime
+    };
+    
+    // Handle different font formats - only parse TTF/OTF properly
+    if (['.ttf', '.otf', '.ttc'].includes(ext)) {
+      const ttfMetadata = parseTTFOTFFont(buffer);
+      if (ttfMetadata && ttfMetadata.name) {
+        return { ...baseMetadata, ...ttfMetadata };
+      }
+    }
+    
+    // For other formats or failed parsing, use filename as fallback
+    const name = path.basename(fontPath, ext);
+    return { ...baseMetadata, name, family: name };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse TTF/OTF font metadata with better error handling
+ * @param buffer - Font file buffer
+ * @returns Parsed font metadata
+ */
+function parseTTFOTFFont(buffer: Buffer): Partial<FontEntry> | null {
+  try {
     // Ensure buffer has minimum required size
     if (buffer.length < 12) {
       return null;
     }
     
+    const metadata: Partial<FontEntry> = {};
     const numTables = buffer.readUInt16BE(4);
     const offset = 12;
 
+    // Parse font tables
     for (let i = 0; i < numTables; i++) {
       const tableOffset = offset + i * 16;
       
@@ -207,84 +525,244 @@ function readFontNameSync(fontPath: string): string | null {
       }
       
       const tag = buffer.toString('ascii', tableOffset, tableOffset + 4);
+      const tableDataOffset = buffer.readUInt32BE(tableOffset + 8);
+      const tableLength = buffer.readUInt32BE(tableOffset + 12);
 
       if (tag === 'name') {
-        const nameTableOffset = buffer.readUInt32BE(tableOffset + 8);
+        const nameData = parseNameTable(buffer, tableDataOffset, tableLength);
+        Object.assign(metadata, nameData);
+      } else if (tag === 'OS/2') {
+        const os2Data = parseOS2Table(buffer, tableDataOffset, tableLength);
+        Object.assign(metadata, os2Data);
+      } else if (tag === 'post') {
+        const postData = parsePostTable(buffer, tableDataOffset, tableLength);
+        Object.assign(metadata, postData);
+      }
+    }
+    
+    return metadata;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse the 'name' table for font names and metadata
+ * @param buffer - Font file buffer
+ * @param offset - Table offset
+ * @param _length - Table length (unused but kept for API consistency)
+ * @returns Parsed name data
+ */
+function parseNameTable(buffer: Buffer, offset: number, _length: number): Partial<FontEntry> {
+  const result: Partial<FontEntry> = {};
+  
+  try {
+    if (offset + 6 > buffer.length) return result;
+    
+    const count = buffer.readUInt16BE(offset + 2);
+    const stringOffset = offset + buffer.readUInt16BE(offset + 4);
+
+    for (let j = 0; j < count; j++) {
+      const recordOffset = offset + 6 + j * 12;
+      
+      if (recordOffset + 12 > buffer.length) break;
+      
+      const nameID = buffer.readUInt16BE(recordOffset + 6);
+      const stringLength = buffer.readUInt16BE(recordOffset + 8);
+      const stringOffsetInTable = buffer.readUInt16BE(recordOffset + 10);
+      const start = stringOffset + stringOffsetInTable;
+
+      if (start + stringLength <= buffer.length) {
+        const nameBuf = buffer.slice(start, start + stringLength);
+        const nameStr = decodeUtf16BE(nameBuf).replace(/\0/g, '').trim();
         
-        // Ensure name table offset is valid
-        if (nameTableOffset + 6 > buffer.length) {
-          break;
-        }
-        
-        const count = buffer.readUInt16BE(nameTableOffset + 2);
-        const stringOffset = nameTableOffset + buffer.readUInt16BE(nameTableOffset + 4);
-
-        for (let j = 0; j < count; j++) {
-          const recordOffset = nameTableOffset + 6 + j * 12;
-          
-          // Ensure record offset is valid
-          if (recordOffset + 12 > buffer.length) {
-            break;
-          }
-          
-          const nameID = buffer.readUInt16BE(recordOffset + 6);
-
-          if (nameID === 4) { // Font full name
-            const length = buffer.readUInt16BE(recordOffset + 8);
-            const offsetStr = buffer.readUInt16BE(recordOffset + 10);
-            const start = stringOffset + offsetStr;
-
-            // Ensure string bounds are valid
-            if (start + length <= buffer.length) {
-              const nameBuf = buffer.slice(start, start + length);
-              const name = decodeUtf16BE(nameBuf).replace(/\0/g, '').trim();
-              if (name) {
-                return name;
-              }
-            }
+        if (nameStr) {
+          switch (nameID) {
+            case 1: // Font family name
+              result.family = nameStr;
+              break;
+            case 4: // Full font name
+              result.name = nameStr;
+              break;
+            case 5: // Version string
+              result.version = nameStr;
+              break;
+            case 0: // Copyright notice
+              result.copyright = nameStr;
+              break;
           }
         }
       }
     }
   } catch {
-    // Return filename as fallback
-    const basename = path.basename(fontPath);
-    const nameWithoutExt = basename.substring(0, basename.lastIndexOf('.'));
-    return nameWithoutExt || null;
+    // Ignore parsing errors
   }
-
-  return null;
+  
+  return result;
 }
 
 /**
- * Get all fonts available on the system
- * @param options - Font scanning options
+ * Parse the 'OS/2' table for weight and style information
+ * @param buffer - Font file buffer
+ * @param offset - Table offset
+ * @param _length - Table length (unused but kept for API consistency)
+ * @returns Parsed OS/2 data
+ */
+function parseOS2Table(buffer: Buffer, offset: number, _length: number): Partial<FontEntry> {
+  const result: Partial<FontEntry> = {};
+  
+  try {
+    if (offset + 8 > buffer.length) return result;
+    
+    // Font weight (offset 4)
+    const weight = buffer.readUInt16BE(offset + 4);
+    result.weight = weight;
+    
+    // Font selection flags (offset 62)
+    if (offset + 64 <= buffer.length) {
+      const fsSelection = buffer.readUInt16BE(offset + 62);
+      
+      // Bit 0: Italic
+      if (fsSelection & 0x01) {
+        result.style = 'italic';
+      } else {
+        result.style = 'normal';
+      }
+    }
+    
+    // Check if font is monospaced (panose data at offset 32)
+    if (offset + 42 <= buffer.length) {
+      const panoseData = buffer.slice(offset + 32, offset + 42);
+      // Panose byte 3 indicates proportion (9 = monospaced)
+      if (panoseData[3] === 9) {
+        result.isMonospace = true;
+      }
+    }
+  } catch {
+    // Ignore parsing errors
+  }
+  
+  return result;
+}
+
+/**
+ * Parse the 'post' table for additional font information
+ * @param buffer - Font file buffer
+ * @param offset - Table offset
+ * @param _length - Table length (unused but kept for API consistency)
+ * @returns Parsed post table data
+ */
+function parsePostTable(buffer: Buffer, offset: number, _length: number): Partial<FontEntry> {
+  const result: Partial<FontEntry> = {};
+  
+  try {
+    if (offset + 32 > buffer.length) return result;
+    
+    // Check if font is monospaced (isFixedPitch at offset 12)
+    const isFixedPitch = buffer.readUInt32BE(offset + 12);
+    if (isFixedPitch !== 0) {
+      result.isMonospace = true;
+    }
+  } catch {
+    // Ignore parsing errors
+  }
+  
+  return result;
+}
+
+/**
+ * Decode UTF-16 Big Endian buffer to string
+ * @param buffer - Buffer containing UTF-16 BE encoded text
+ * @returns Decoded string
+ */
+function decodeUtf16BE(buffer: Buffer): string {
+  let result = '';
+  
+  // UTF-16 BE uses 2 bytes per character
+  for (let i = 0; i < buffer.length - 1; i += 2) {
+    const byte1 = buffer[i];
+    const byte2 = buffer[i + 1];
+    if (byte1 !== undefined && byte2 !== undefined) {
+      const charCode = (byte1 << 8) | byte2;
+      if (charCode !== 0) { // Skip null characters
+        result += String.fromCharCode(charCode);
+      }
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Get all fonts available on the system (synchronous)
+ * @param options - Font scan options
  * @returns Array of font entries
  */
-export function getAllFonts(options: FontScanOptions = {}): FontEntry[] {
+function getAllFontsSync(options: FontScanOptions = {}): FontEntry[] {
+  const result = getAllFontsWithResultSync(options);
+  return result.fonts;
+}
+
+/**
+ * Get all fonts available on the system with detailed results (synchronous)
+ * @param options - Font scanning options
+ * @returns Font scan result with fonts, errors, and statistics
+ */
+function getAllFontsWithResultSync(options: FontScanOptions = {}): FontScanResult {
+  const startTime = Date.now();
   const now = Date.now();
   
   // Check cache if enabled
   if (options.useCache !== false && fontCache && (now - cacheTimestamp) < CACHE_DURATION) {
-    return fontCache;
+    return {
+      fonts: fontCache,
+      errors: [],
+      stats: {
+        directoriesScanned: 0,
+        filesProcessed: fontCache.length,
+        fontsFound: fontCache.length,
+        filesFailed: 0,
+        scanTimeMs: Date.now() - startTime
+      }
+    };
   }
   
   const fontDirs = getPlatformFontDirs(options);
   const fontFiles: string[] = [];
+  let directoriesScanned = 0;
 
   fontDirs.forEach(dir => {
-    walkDir(dir, fontFiles);
+    if (fs.existsSync(dir)) {
+      walkDir(dir, fontFiles);
+      directoriesScanned++;
+    }
   });
 
   const fonts: FontEntry[] = [];
+  const errors: FontError[] = [];
+  let filesProcessed = 0;
+  let filesFailed = 0;
+
   for (const file of fontFiles) {
-    const name = readFontNameSync(file);
-    if (name) {
-      const ext = path.extname(file).toLowerCase();
-      fonts.push({ 
-        name, 
+    filesProcessed++;
+    try {
+      const metadata = readFontMetadataSync(file);
+      if (metadata && metadata.name) {
+        fonts.push(metadata as FontEntry);
+      } else {
+        filesFailed++;
+        errors.push({
+          path: file,
+          message: 'Failed to extract font metadata',
+          code: 'PARSE_ERROR'
+        });
+      }
+    } catch (error) {
+      filesFailed++;
+      errors.push({
         path: file,
-        format: ext.substring(1) // Remove the dot
+        message: error instanceof Error ? error.message : 'Unknown error',
+        code: 'PARSE_ERROR'
       });
     }
   }
@@ -295,32 +773,137 @@ export function getAllFonts(options: FontScanOptions = {}): FontEntry[] {
     cacheTimestamp = now;
   }
 
-  return fonts;
+  return {
+    fonts,
+    errors,
+    stats: {
+      directoriesScanned,
+      filesProcessed,
+      fontsFound: fonts.length,
+      filesFailed,
+      scanTimeMs: Date.now() - startTime
+    }
+  };
 }
 
 /**
- * Find a font by name (case-insensitive)
- * @param query - Font name to search for
+ * Get all fonts available on the system (asynchronous)
  * @param options - Font scanning options
- * @returns Font entry if found, null otherwise
+ * @returns Promise resolving to array of font entries
  */
-export function findFontByName(query: string, options: FontScanOptions = {}): FontEntry | null {
-  const fonts = getAllFonts(options);
-  const normalizedQuery = query.toLowerCase().trim();
+async function getAllFontsAsync(options: FontScanOptions = {}): Promise<FontEntry[]> {
+  const result = await getAllFontsWithResultAsync(options);
+  return result.fonts;
+}
+
+/**
+ * Get all fonts available on the system with detailed results (asynchronous)
+ * @param options - Font scanning options
+ * @returns Promise resolving to font scan result with fonts, errors, and statistics
+ */
+async function getAllFontsWithResultAsync(options: FontScanOptions = {}): Promise<FontScanResult> {
+  const startTime = Date.now();
+  const now = Date.now();
   
-  // Try exact match first
-  let found = fonts.find(f => f.name.toLowerCase() === normalizedQuery);
-  
-  // If no exact match, try partial match
-  if (!found) {
-    found = fonts.find(f => f.name.toLowerCase().includes(normalizedQuery));
+  // Check cache if enabled
+  if (options.useCache !== false && fontCache && (now - cacheTimestamp) < CACHE_DURATION) {
+    return {
+      fonts: fontCache,
+      errors: [],
+      stats: {
+        directoriesScanned: 0,
+        filesProcessed: fontCache.length,
+        fontsFound: fontCache.length,
+        filesFailed: 0,
+        scanTimeMs: Date.now() - startTime
+      }
+    };
   }
   
-  return found || null;
+  const fontDirs = getPlatformFontDirs(options);
+  const fontFiles: string[] = [];
+  let directoriesScanned = 0;
+
+  // Async directory walking
+  for (const dir of fontDirs) {
+    try {
+      await fs.promises.access(dir);
+      await walkDirAsync(dir, fontFiles);
+      directoriesScanned++;
+    } catch {
+      // Directory doesn't exist or no permission
+    }
+  }
+
+  const fonts: FontEntry[] = [];
+  const errors: FontError[] = [];
+  let filesProcessed = 0;
+  let filesFailed = 0;
+
+  // Process fonts in batches to avoid overwhelming the system
+  const batchSize = 50;
+  for (let i = 0; i < fontFiles.length; i += batchSize) {
+    const batch = fontFiles.slice(i, i + batchSize);
+    const batchPromises = batch.map(async (file) => {
+      filesProcessed++;
+      try {
+        const metadata = await readFontMetadataAsync(file);
+        if (metadata && metadata.name) {
+          return { success: true, font: metadata as FontEntry };
+        } else {
+          return {
+            success: false,
+            error: {
+              path: file,
+              message: 'Failed to extract font metadata',
+              code: 'PARSE_ERROR' as const
+            }
+          };
+        }
+      } catch (error) {
+        return {
+          success: false,
+          error: {
+            path: file,
+            message: error instanceof Error ? error.message : 'Unknown error',
+            code: 'PARSE_ERROR' as const
+          }
+        };
+      }
+    });
+
+    const batchResults = await Promise.all(batchPromises);
+    for (const result of batchResults) {
+      if (result.success && result.font) {
+        fonts.push(result.font);
+      } else if (!result.success && result.error) {
+        filesFailed++;
+        errors.push(result.error);
+      }
+    }
+  }
+
+  // Update cache
+  if (options.useCache !== false) {
+    fontCache = fonts;
+    cacheTimestamp = now;
+  }
+
+  return {
+    fonts,
+    errors,
+    stats: {
+      directoriesScanned,
+      filesProcessed,
+      fontsFound: fonts.length,
+      filesFailed,
+      scanTimeMs: Date.now() - startTime
+    }
+  };
 }
 
 /**
- * Clear the font cache to force a fresh scan on next call
+ * Clear the font cache to force a fresh scan
  */
 export function clearFontCache(): void {
   fontCache = null;
@@ -328,31 +911,17 @@ export function clearFontCache(): void {
 }
 
 /**
- * Get the number of cached fonts (if cache exists)
- * @returns Number of cached fonts or 0 if no cache
+ * Get the number of cached fonts
+ * @returns Number of fonts in cache
  */
 export function getCachedFontCount(): number {
   return fontCache?.length || 0;
 }
 
 /**
- * Check if the font cache is valid
- * @returns True if cache exists and is not expired
+ * Check if the current cache is valid
+ * @returns true if cache exists and is not expired
  */
 export function isCacheValid(): boolean {
-  if (!fontCache) return false;
-  const now = Date.now();
-  return (now - cacheTimestamp) < CACHE_DURATION;
-}
-
-/**
- * Get fonts by format
- * @param format - Font format to filter by (e.g., 'ttf', 'otf')
- * @param options - Font scanning options
- * @returns Array of fonts matching the specified format
- */
-export function getFontsByFormat(format: string, options: FontScanOptions = {}): FontEntry[] {
-  const fonts = getAllFonts(options);
-  const normalizedFormat = format.toLowerCase();
-  return fonts.filter(f => f.format === normalizedFormat);
+  return fontCache !== null && (Date.now() - cacheTimestamp) < CACHE_DURATION;
 }
