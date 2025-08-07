@@ -3,15 +3,23 @@
   "version": "1.0.0",
   "description": "Cross-platform Node.js library for discovering and searching system fonts",
   "main": "dist/index.js",
-  "module": "src/index.ts",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "dev": "bun run src/index.ts",
     "build": "tsc",
-    "test": "bun run src/index.ts",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "bun run clean && bun run build"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/redwilly/fontscanner.git"
+  },
+  "homepage": "https://github.com/redwilly/fontscanner#readme",
   "keywords": [
     "font",
     "fonts",
@@ -22,16 +30,11 @@
     "font-discovery",
     "system-fonts"
   ],
-  "author": "Your Name",
+  "author": "RedWilly",
   "license": "MIT",
   "engines": {
     "node": ">=16.0.0"
   },
-  "files": [
-    "dist",
-    "src",
-    "README.md"
-  ],
   "devDependencies": {
     "@types/bun": "latest"
   },

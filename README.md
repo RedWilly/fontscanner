@@ -412,7 +412,7 @@ console.log('All fonts by format:', formatCounts);
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd font-scanner
+cd fontscanner
 
 # Install dependencies
 bun install
