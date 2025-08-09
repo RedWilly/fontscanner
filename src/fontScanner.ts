@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
  * Supported font file extensions (modern formats only)
  */
 const FONT_EXTENSIONS = new Set([
-  '.ttf', '.otf', '.woff', '.woff2', '.ttc', '.fon', '.fnt'
+  '.ttf', '.otf', '.woff', '.woff2', '.ttc'
 ]);
 
 // Font cache for performance

@@ -39,28 +39,28 @@
 // console.log(`Found ${asyncFonts.length} OTF fonts`);
 
 
-// import FontScanner from '../src';
+import FontScanner from '../src';
 
-// // List all fonts
-// const fonts = FontScanner.scan().getFonts();
-// fonts.forEach(font => {
-//   console.log(`${font.name} (${font.format}) - ${font.path}`);
-// });
+// List all fonts
+const fonts = FontScanner.scan().getFonts();
+fonts.forEach(font => {
+  console.log(`${font.name} (${font.format}) - ${font.path}`);
+});
 
-// // Find specific fonts
-// const commonFonts = ['Arial', 'Times New Roman', 'Helvetica', 'Calibri'];
-// for (const fontName of commonFonts) {
-//   const matchingFonts = FontScanner
-//     .scan()
-//     .matchNameExactly(fontName)
-//     .getFonts();
+// Find specific fonts
+const commonFonts = ['Arial'];
+for (const fontName of commonFonts) {
+  const matchingFonts = FontScanner
+    .scan()
+    .matchNameExactly(fontName)
+    .getFonts();
   
-//   if (matchingFonts.length > 0) {
-//     console.log(`✓ ${fontName}: ${matchingFonts[0].path}`);
-//   } else {
-//     console.log(`✗ ${fontName}: Not found`);
-//   }
-// }
+  if (matchingFonts.length > 0) {
+    console.log(`✓ ${fontName}: ${matchingFonts[0].path}`);
+  } else {
+    console.log(`✗ ${fontName}: Not found`);
+  }
+}
 
 // import FontScanner, { isCacheValid, clearFontCache } from '../src';
 
